@@ -1,13 +1,27 @@
 import EventEmitter from 'events';
 
+/**
+ * SSE 消息发送器
+ */
 export class SSEEmitter extends EventEmitter {
-  constructor (events) {
+  /**
+   * @param {string[]} events 事件
+   */
+  constructor (events = []) {
     super();
 
-    this.events = events.map(v => ({ id: 0, event: v }));
+    this.eventModules = events.map(v => ({ id: 0, event: v }));
     this.init = this.init.bind(this);
   }
 
+  /**
+   * SSE 路由初始化句柄
+   * @param {*} req request
+   * @param {*} res response
+   *
+   * @example
+   * router.get ('/sse', sseEmitter.init);
+   */
   init (req, res) {
     req.socket.setTimeout(0);
     req.socket.setNoDelay(true);
@@ -18,10 +32,10 @@ export class SSEEmitter extends EventEmitter {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Cache-Control', 'no-cache');
 
-    for (const e of this.events) {
-      this.on(e.event, ({ id, event, data, retry }) => {
+    for (const eventModule of this.eventModules) {
+      this.on(eventModule.event, ({ id, event, data, retry }) => {
         res.write(
-          `id: ${id || ++e.id}\n` +
+          `id: ${id || ++eventModule.id}\n` +
           `event: ${String(event)}\n` +
           `${retry ? `retry: ${retry}\n` : ''}` +
           `data: ${JSON.stringify(data)}\n\n`
@@ -30,70 +44,145 @@ export class SSEEmitter extends EventEmitter {
     }
   }
 
-  send (e, { id, event, data, retry }) {
-    this.emit(e, { id, event, data, retry });
+  /**
+   * @typedef SSEMessage SSE 消息
+   * @property {number} [params.id] 事件 ID
+   * @property {string} params.event 事件
+   * @property {any} params.data 数据
+   * @property {number} [params.retry] 重连
+   */
+  /**
+   * 单事件消息发送
+   * @param {string} eventName Emitter 事件
+   * @param {SSEMessage} params SSE 消息体
+   * @returns {SSEEmitter}
+   *
+   */
+  send (eventName, { id, event, data, retry }) {
+    this.emit(eventName, { id, event, data, retry });
+    return this;
   }
 
+  /**
+   * 全事件消息发送
+   * @param {SSEMessage} params SSE 消息体
+   * @returns {SSEEmitter}
+   */
   sendAll ({ id, event, data, retry }) {
-    for (const e of this.events) {
-      this.send(e, { id, event, data, retry });
+    for (const eventName of this.eventModules) {
+      this.send(eventName, { id, event, data, retry });
     }
+    return this;
   }
 }
 
+/**
+ * SSE 模块
+ */
 export class SSEModule {
-  constructor (namespace, emitters = []) {
+  /**
+   * @param {string} namespace 命名空间
+   * @param {[{
+   *   route: string,
+   *   events: string[],
+   * }]} routers 路由模块
+   */
+  constructor (namespace = 'sse', routers = []) {
     this.namespace = namespace;
-    this.emitter_map = new Map(emitters.map(v => [v.key, new SSEEmitter(v.events)]));
+    this.emitterMap = new Map(routers.map(v => [v.route, new SSEEmitter(v.events)]));
   }
 
-  set (key, events) {
+  /**
+   * 路由模块设置
+   * @param {string} route 路由
+   * @param {string[]} events 事件
+   * @returns {SSEEmitter}
+   */
+  set (route, events) {
     const eittmer = new SSEEmitter(events);
-    this.emitter_map.set(key, eittmer);
+    this.emitterMap.set(route, eittmer);
     return eittmer;
   }
 
-  get (key) {
-    return this.emitter_map.get(key);
+  /**
+   * 获取 SSE 消息发送器
+   * @param {string} route 路由
+   * @returns {SSEEmitter}
+   */
+  get (route) {
+    return this.emitterMap.get(route);
   }
 
-  has (key) {
-    return this.emitter_map.has(key);
+  /**
+   * 路由模块校验
+   * @param {string} route 路由
+   * @returns {boolean}
+   */
+  has (route) {
+    return this.emitterMap.has(route);
   }
 
-  remove (key) {
-    const emitter = this.get(key);
-    this.emitter_map.delete(key);
+  /**
+   * 路由模块移除
+   * @param {string} route  路由
+   * @returns {SSEEmitter}
+   */
+  remove (route) {
+    const emitter = this.get(route);
+    this.emitterMap.delete(route);
     return emitter;
   }
 
-  getEmitterInit (key, events) {
-    if(this.has(key)) {
-      return this.get(key).init;
+  /**
+   * 获取 SSE 路由初始化句柄
+   * @description route 不存在时, 按 events 新建路由模块
+   * @param {string} route 路由
+   * @param {string[]} [events] 事件
+   * @returns {Function} SSEEmitter#init
+   */
+  getEmitterInit (route, events) {
+    if(this.has(route)) {
+      return this.get(route).init;
     }
-    return this.set(key, events).init;
+    return this.set(route, events).init;
   }
 
-  send (key, e, { id, event, data, retry }) {
-    if (this.has(key)) {
-      this.get(key).send(e, { id, event, data, retry });
+  /**
+   * 单路由单事件消息发送
+   * @param {string} route 路由
+   * @param {string} eventName Emitter 事件
+   * @param {SSEMessage} params SSE 消息体
+   * @returns {SSEModule}
+   */
+  send (route, eventName, { id, event, data, retry }) {
+    if (this.has(route)) {
+      this.get(route).send(eventName, { id, event, data, retry });
     }
+    return this;
   }
 }
 
+/**
+ * SSE 工具
+ */
 export class SSE {
   constructor () {
-    this.sse_module_map = new Map();
+    this.sseModuleMap = new Map();
   }
 
+  /**
+   * 获取 SSE 模块
+   * @param {string} namespace 命名空间
+   * @returns {SSEModule}
+   */
   get (namespace) {
-    if (this.sse_module_map.has(namespace)) {
-      return this.sse_module_map.get(namespace);
+    if (this.sseModuleMap.has(namespace)) {
+      return this.sseModuleMap.get(namespace);
     }
 
-    const sse_module = new SSEModule(namespace);
-    this.sse_module_map.set(namespace, sse_module);
-    return sse_module;
+    const sseModule = new SSEModule(namespace);
+    this.sseModuleMap.set(namespace, sseModule);
+    return sseModule;
   }
 }
 
