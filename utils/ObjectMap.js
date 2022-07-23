@@ -38,6 +38,17 @@ class ObjectMap extends Object {
   }
 
   /**
+   * 单次深度设置
+   * @param {string} path 键路径; '.'分割;
+   * @param {Any} value
+   * @returns {ObjectMap}
+   */
+   setOnce (path, value) {
+    ObjectTool.setOnce(this.source, path, value);
+    return this;
+  }
+
+  /**
    * 深度数组添加元素
    * @param {string} path 键路径; '.'分割;
    * @param {Any} value

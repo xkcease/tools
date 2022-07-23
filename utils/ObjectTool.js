@@ -73,11 +73,8 @@ const ObjectTool = {
     while (keys.length > 1) {
       const key = keys.shift();
 
-      if (target[key] === undefined) {
+      if (target[key] === undefined || !ObjectTool.isObjectOrArray(target[key])) {
         target[key] = {};
-      }
-      else if (!ObjectTool.isObjectOrArray(target[key])) {
-        return false;
       }
 
       target = target[key];
@@ -86,6 +83,21 @@ const ObjectTool = {
     target[keys.shift()] = value;
 
     return true;
+  },
+
+  /**
+   * 单次深度设置
+   * @param {Object} source
+   * @param {string} path 键路径; '.'分割;
+   * @param {Any} value
+   * @returns {Boolean}
+   */
+   setOnce (source, path, value) {
+    if (!ObjectTool.isObject(source) || ObjectTool.get(source, path)) {
+      return false;
+    }
+
+    return ObjectTool.set(source, path, value);
   },
 
   /**
