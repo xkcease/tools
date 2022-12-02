@@ -6,10 +6,12 @@ import EventEmitter from 'events';
 export class SSEEmitter extends EventEmitter {
   /**
    * @param {string[]} events 事件
+   * @param {string} [route] 路由
    */
-  constructor (events = []) {
+  constructor (route = 'common', events = []) {
     super();
 
+    this.route = route;
     this.eventModules = events.map(v => ({ id: 0, event: v }));
     this.init = this.init.bind(this);
   }
@@ -33,7 +35,7 @@ export class SSEEmitter extends EventEmitter {
     res.setHeader('Cache-Control', 'no-cache');
 
     for (const eventModule of this.eventModules) {
-      this.on(eventModule.event, ({ id, event, data, retry }) => {
+      this.on(eventModule.event, ({ id, event = 'sse', data = {}, retry }) => {
         res.write(
           `id: ${id || ++eventModule.id}\n` +
           `event: ${String(event)}\n` +
@@ -53,13 +55,13 @@ export class SSEEmitter extends EventEmitter {
    */
   /**
    * 单事件消息发送
-   * @param {string} eventName Emitter 事件
+   * @param {string} emitterEvent Emitter 事件
    * @param {SSEMessage} params SSE 消息体
    * @returns {SSEEmitter}
    *
    */
-  send (eventName, { id, event, data, retry }) {
-    this.emit(eventName, { id, event, data, retry });
+  send (emitterEvent, { id, event, data, retry }) {
+    this.emit(emitterEvent, { id, event, data, retry });
     return this;
   }
 
@@ -69,8 +71,8 @@ export class SSEEmitter extends EventEmitter {
    * @returns {SSEEmitter}
    */
   sendAll ({ id, event, data, retry }) {
-    for (const eventName of this.eventModules) {
-      this.send(eventName, { id, event, data, retry });
+    for (const emitterEvent of this.eventModules) {
+      this.send(emitterEvent, { id, event, data, retry });
     }
     return this;
   }
@@ -89,7 +91,7 @@ export class SSEModule {
    */
   constructor (namespace = 'sse', routers = []) {
     this.namespace = namespace;
-    this.emitterMap = new Map(routers.map(v => [v.route, new SSEEmitter(v.events)]));
+    this.emitterMap = new Map(routers.map(v => [v.route, new SSEEmitter(v.route, v.events)]));
   }
 
   /**
@@ -99,7 +101,7 @@ export class SSEModule {
    * @returns {SSEEmitter}
    */
   set (route, events) {
-    const eittmer = new SSEEmitter(events);
+    const eittmer = new SSEEmitter(route, events);
     this.emitterMap.set(route, eittmer);
     return eittmer;
   }
@@ -137,26 +139,26 @@ export class SSEModule {
    * 获取 SSE 路由初始化句柄
    * @description route 不存在时, 按 events 新建路由模块
    * @param {string} route 路由
-   * @param {string[]} [events] 事件
+   * @param {string[]} [emitterEvents] Emitter 事件
    * @returns {Function} SSEEmitter#init
    */
-  getEmitterInit (route, events) {
+  getEmitterInit (route, emitterEvents) {
     if(this.has(route)) {
       return this.get(route).init;
     }
-    return this.set(route, events).init;
+    return this.set(route, emitterEvents).init;
   }
 
   /**
    * 单路由单事件消息发送
    * @param {string} route 路由
-   * @param {string} eventName Emitter 事件
+   * @param {string} emitterEvent Emitter 事件
    * @param {SSEMessage} params SSE 消息体
    * @returns {SSEModule}
    */
-  send (route, eventName, { id, event, data, retry }) {
+  send (route, emitterEvent, { id, event, data, retry }) {
     if (this.has(route)) {
-      this.get(route).send(eventName, { id, event, data, retry });
+      this.get(route).send(emitterEvent, { id, event, data, retry });
     }
     return this;
   }
