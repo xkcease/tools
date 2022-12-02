@@ -1,7 +1,7 @@
 /**
  * EventSource 监听器
  */
- export class EventSourceListener {
+export class EventSourceListener {
   constructor (route) {
     this.route = route;
     this._handlerMap = new Map();
